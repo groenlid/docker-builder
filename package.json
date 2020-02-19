@@ -1,0 +1,23 @@
+{
+  "name": "docker-builder",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "scripts": {
+    "build": "ncc build index.ts -o dist"
+  },
+  "dependencies": {
+    "@mojotech/json-type-validation": "^3.1.0",
+    "@types/cross-spawn": "^6.0.1",
+    "@types/git-branch": "^2.0.1",
+    "@types/node": "^12.12.17",
+    "@types/uuid": "^3.4.6",
+    "@zeit/ncc": "^0.20.5",
+    "aigle": "^1.14.1",
+    "chalk": "^3.0.0",
+    "cross-spawn": "^7.0.1",
+    "del": "^5.1.0",
+    "typescript": "3.7.3",
+    "uuid": "^3.3.3"
+  }
+}
