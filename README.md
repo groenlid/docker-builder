@@ -18,7 +18,7 @@ Manual builder
 {
     "type": "manual",
     "dockerfile": "", // Dockerfile to build the project. Optional and defaults to Dockerfile
-    "buildcontext": "root" | "projectdir", // In which context should the dockerfile be built. In YT3 context or in projectdir context. Optional field with default set to root.
+    "buildcontext": "root" | "projectdir", // In which context should the dockerfile be built. In the root context or in projectdir context. Optional field with default set to root.
 }
 ```
 
