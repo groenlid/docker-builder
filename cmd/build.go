@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	builder "github.com/groenlid/docker-builder/cmd/builders"
 	"github.com/spf13/cobra"
 )
 
@@ -195,7 +196,7 @@ func buildAndPushImages(configurations []ConfigurationWithProjectPath) {
 func buildDockerImage(configuration ConfigurationWithProjectPath) {
 	os.Setenv("DOCKER_BUILDKIT", "1")
 	os.Setenv("BUILDKIT_PROGRESS", "plain")
-
+	builder.Manager.PrintBuilders()
 }
 
 func pushImage() {
