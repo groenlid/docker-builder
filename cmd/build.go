@@ -61,6 +61,8 @@ func runBuild(cmd *cobra.Command, args []string) {
 		log.Fatalln(err)
 	}
 
+	buildAndPushImages(configurations)
+
 	fmt.Println(configurations)
 	persitDigestCache(digestCachePath, digestCache)
 	fmt.Println(digestCache)
@@ -134,10 +136,15 @@ type Configuration struct {
 	Deploy         Deploy `json:"deploy"`
 }
 
-func findYT3ConfigurationFiles(sourceDirectory string) ([]Configuration, error) {
+type ConfigurationWithProjectPath struct {
+	Configuration
+	ProjectPath string
+}
+
+func findYT3ConfigurationFiles(sourceDirectory string) ([]ConfigurationWithProjectPath, error) {
 	foldersToSkip := []string{"node_modules", ".git", "bin"}
 	configName := "ytbdsettings.json"
-	configs := []Configuration{}
+	configs := []ConfigurationWithProjectPath{}
 
 	err := filepath.Walk(sourceDirectory, func(path string, info os.FileInfo, e error) error {
 		if e != nil {
@@ -172,14 +179,26 @@ func findYT3ConfigurationFiles(sourceDirectory string) ([]Configuration, error) 
 			return nil
 		}
 
-		configs = append(configs, configuration)
+		configs = append(configs, ConfigurationWithProjectPath{Configuration: configuration, ProjectPath: path})
 		return nil
 	})
 
 	return configs, err
 }
 
-func buildAndPushImages() {
+func buildAndPushImages(configurations []ConfigurationWithProjectPath) {
+	for _, configuration := range configurations {
+		buildDockerImage(configuration)
+	}
+}
+
+func buildDockerImage(configuration ConfigurationWithProjectPath) {
+	os.Setenv("DOCKER_BUILDKIT", "1")
+	os.Setenv("BUILDKIT_PROGRESS", "plain")
+
+}
+
+func pushImage() {
 
 }
 
