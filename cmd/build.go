@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -9,6 +11,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/client"
 	builder "github.com/groenlid/docker-builder/cmd/builders"
 	"github.com/groenlid/docker-builder/cmd/structs"
 	"github.com/spf13/cobra"
@@ -55,8 +59,12 @@ func runBuild(cmd *cobra.Command, args []string) {
 	dockerpassword, _ := flags.GetString("registryPassword")
 	dockerregistry, _ := flags.GetString("registry")
 
-	loginToAcr(dockerusername, dockerpassword, dockerregistry)
+	authString, err := getRegistryAuthString(dockerusername, dockerpassword, dockerregistry)
+	if err != nil {
+		log.Fatalln(err)
+	}
 
+	log.Println(authString)
 	configurations, err := findYT3ConfigurationFiles(".")
 
 	if err != nil {
@@ -64,6 +72,21 @@ func runBuild(cmd *cobra.Command, args []string) {
 	}
 
 	buildAndPushImages(configurations)
+
+	ctx := context.Background()
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		panic(err)
+	}
+
+	images, err := cli.ImageList(ctx, types.ImageListOptions{})
+	if err != nil {
+		panic(err)
+	}
+
+	for _, image := range images {
+		fmt.Println(image.ID)
+	}
 
 	persitDigestCache(digestCachePath, digestCache)
 }
@@ -121,6 +144,19 @@ func loginToAcr(username string, password string, dockerregistry string) {
 	if err != nil {
 		log.Fatalf("Could not login to docker registry error: %v", err)
 	}
+}
+
+func getRegistryAuthString(username string, password string, dockerregistry string) (string, error) {
+	authConfig := types.AuthConfig{
+		Username:      username,
+		Password:      password,
+		ServerAddress: dockerregistry,
+	}
+	encodedJSON, err := json.Marshal(authConfig)
+	if err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(encodedJSON), nil
 }
 
 func findYT3ConfigurationFiles(sourceDirectory string) ([]structs.ConfigurationWithProjectPath, error) {
@@ -181,6 +217,8 @@ func buildDockerImage(configuration structs.ConfigurationWithProjectPath) {
 	if err != nil {
 		log.Fatalln(err)
 	}
+
+	//builderForProject.GetBuildArguments(configuration)
 	log.Println(configuration.ServiceName, builderForProject.BuilderName)
 }
 

@@ -9,4 +9,8 @@ var NodeBuilder = &Builder{
 	CanBuildProject: func(conf structs.ConfigurationWithProjectPath) bool {
 		return conf.Builder.Type == "nodejs"
 	},
+	GetBuildArguments: func(conf structs.ConfigurationWithProjectPath) (*BuildArguments, error) {
+
+		return nil, nil
+	},
 }

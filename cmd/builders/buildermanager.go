@@ -8,9 +8,14 @@ import (
 )
 
 type Builder struct {
-	BuilderName                  string
-	CanBuildProject              func(conf structs.ConfigurationWithProjectPath) bool
-	GetDockerfileContentForBuild func(conf structs.ConfigurationWithProjectPath) (string, error)
+	BuilderName       string
+	CanBuildProject   func(conf structs.ConfigurationWithProjectPath) bool
+	GetBuildArguments func(conf structs.ConfigurationWithProjectPath) (*BuildArguments, error)
+}
+
+type BuildArguments struct {
+	DockerfileContent      string
+	DockerBuildContextPath string
 }
 
 type BuilderManager struct {
