@@ -5,8 +5,8 @@ import (
 )
 
 var NodeBuilder = &Builder{
-	BuilderName: "Nodejs",
+	BuilderName: "nodejs",
 	CanBuildProject: func(conf structs.ConfigurationWithProjectPath) bool {
-		return false
+		return conf.Builder.Type == "nodejs"
 	},
 }

@@ -183,7 +183,7 @@ func buildDockerImage(configuration structs.ConfigurationWithProjectPath) {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	log.Println(builderForProject.BuilderName)
+	log.Println(configuration.ServiceName, builderForProject.BuilderName)
 }
 
 func pushImage() {

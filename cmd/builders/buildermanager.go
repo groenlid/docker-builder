@@ -8,8 +8,9 @@ import (
 )
 
 type Builder struct {
-	BuilderName     string
-	CanBuildProject func(conf structs.ConfigurationWithProjectPath) bool
+	BuilderName                  string
+	CanBuildProject              func(conf structs.ConfigurationWithProjectPath) bool
+	GetDockerfileContentForBuild func(conf structs.ConfigurationWithProjectPath) (string, error)
 }
 
 type BuilderManager struct {
@@ -35,5 +36,6 @@ var Manager = &BuilderManager{
 	Builders: []*Builder{
 		NodeBuilder,
 		DotnetBuilder,
+		ManualBuilder,
 	},
 }

@@ -4,9 +4,9 @@ import (
 	"github.com/groenlid/docker-builder/cmd/structs"
 )
 
-var DotnetBuilder = &Builder{
-	BuilderName: "dotnet",
+var ManualBuilder = &Builder{
+	BuilderName: "manual",
 	CanBuildProject: func(conf structs.ConfigurationWithProjectPath) bool {
-		return conf.Builder.Type == "dotnet"
+		return conf.Builder.Type == "" || conf.Builder.Type == "manual"
 	},
 }
