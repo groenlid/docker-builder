@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	builder "github.com/groenlid/docker-builder/cmd/builders"
+	"github.com/groenlid/docker-builder/cmd/structs"
 	"github.com/spf13/cobra"
 )
 
@@ -124,28 +125,10 @@ func loginToAcr(username string, password string, dockerregistry string) {
 	}
 }
 
-type Deploy struct {
-	Type         string `json:"type"`
-	DockerFile   string `json:"dockerfile"`
-	BuildContext string `json:"buildcontext"`
-}
-
-type Configuration struct {
-	ServiceName    string `json:"servicename"`
-	Cluster        string `json:"cluster"`
-	DeploymentFile string `json:"deploymentfile"`
-	Deploy         Deploy `json:"deploy"`
-}
-
-type ConfigurationWithProjectPath struct {
-	Configuration
-	ProjectPath string
-}
-
-func findYT3ConfigurationFiles(sourceDirectory string) ([]ConfigurationWithProjectPath, error) {
+func findYT3ConfigurationFiles(sourceDirectory string) ([]structs.ConfigurationWithProjectPath, error) {
 	foldersToSkip := []string{"node_modules", ".git", "bin"}
 	configName := "ytbdsettings.json"
-	configs := []ConfigurationWithProjectPath{}
+	configs := []structs.ConfigurationWithProjectPath{}
 
 	err := filepath.Walk(sourceDirectory, func(path string, info os.FileInfo, e error) error {
 		if e != nil {
@@ -172,7 +155,7 @@ func findYT3ConfigurationFiles(sourceDirectory string) ([]ConfigurationWithProje
 			return nil
 		}
 
-		configuration := Configuration{}
+		configuration := structs.Configuration{}
 		deserializeError := json.Unmarshal(fileContent, &configuration)
 
 		if deserializeError != nil {
@@ -180,23 +163,27 @@ func findYT3ConfigurationFiles(sourceDirectory string) ([]ConfigurationWithProje
 			return nil
 		}
 
-		configs = append(configs, ConfigurationWithProjectPath{Configuration: configuration, ProjectPath: path})
+		configs = append(configs, structs.ConfigurationWithProjectPath{Configuration: configuration, ProjectPath: path})
 		return nil
 	})
 
 	return configs, err
 }
 
-func buildAndPushImages(configurations []ConfigurationWithProjectPath) {
+func buildAndPushImages(configurations []structs.ConfigurationWithProjectPath) {
 	for _, configuration := range configurations {
 		buildDockerImage(configuration)
 	}
 }
 
-func buildDockerImage(configuration ConfigurationWithProjectPath) {
+func buildDockerImage(configuration structs.ConfigurationWithProjectPath) {
 	os.Setenv("DOCKER_BUILDKIT", "1")
 	os.Setenv("BUILDKIT_PROGRESS", "plain")
-	builder.Manager.PrintBuilders()
+	builderForProject, err := builder.Manager.GetBuilderForProject(configuration)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	log.Println(builderForProject.BuilderName)
 }
 
 func pushImage() {

@@ -1,11 +1,15 @@
 package builder
 
 import (
+	"errors"
 	"log"
+
+	"github.com/groenlid/docker-builder/cmd/structs"
 )
 
 type Builder struct {
-	BuilderName string
+	BuilderName     string
+	CanBuildProject func(conf structs.ConfigurationWithProjectPath) bool
 }
 
 type BuilderManager struct {
@@ -18,8 +22,18 @@ func (m *BuilderManager) PrintBuilders() {
 	}
 }
 
+func (m *BuilderManager) GetBuilderForProject(conf structs.ConfigurationWithProjectPath) (*Builder, error) {
+	for _, builder := range m.Builders {
+		if builder.CanBuildProject(conf) {
+			return builder, nil
+		}
+	}
+	return nil, errors.New("No builder found for configuration at path :" + conf.ProjectPath)
+}
+
 var Manager = &BuilderManager{
 	Builders: []*Builder{
 		NodeBuilder,
+		DotnetBuilder,
 	},
 }
