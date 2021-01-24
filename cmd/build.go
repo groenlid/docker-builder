@@ -65,9 +65,7 @@ func runBuild(cmd *cobra.Command, args []string) {
 
 	buildAndPushImages(configurations)
 
-	fmt.Println(configurations)
 	persitDigestCache(digestCachePath, digestCache)
-	fmt.Println(digestCache)
 }
 
 func cleanArtifactFolders() {
