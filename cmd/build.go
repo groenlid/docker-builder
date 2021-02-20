@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/client"
 	builder "github.com/groenlid/docker-builder/cmd/builders"
 	"github.com/groenlid/docker-builder/cmd/structs"
 	"github.com/spf13/cobra"
@@ -63,30 +62,39 @@ func runBuild(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatalln(err)
 	}
-
-	log.Println(authString)
 	configurations, err := findYT3ConfigurationFiles(".")
 
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	buildAndPushImages(configurations)
+	ctx := context.Background()
+
+	buildAndPushImages(ctx, configurations, authString)
+
+	persitDigestCache(digestCachePath, digestCache)
+}
+
+func runBuildOld(cmd *cobra.Command, args []string) {
+	fmt.Println("inside runbuild")
+	digestCachePath := ".digestcache"
+	digestCache := getDigestCache(digestCachePath)
+
+	flags := cmd.Flags()
+	dockerusername, _ := flags.GetString("registryUsername")
+	dockerpassword, _ := flags.GetString("registryPassword")
+	dockerregistry, _ := flags.GetString("registry")
+
+	loginToAcr(dockerusername, dockerpassword, dockerregistry)
+	configurations, err := findYT3ConfigurationFiles(".")
+
+	if err != nil {
+		log.Fatalln(err)
+	}
 
 	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		panic(err)
-	}
 
-	images, err := cli.ImageList(ctx, types.ImageListOptions{})
-	if err != nil {
-		panic(err)
-	}
-
-	for _, image := range images {
-		fmt.Println(image.ID)
-	}
+	buildAndPushImages(ctx, configurations, "")
 
 	persitDigestCache(digestCachePath, digestCache)
 }
@@ -162,7 +170,7 @@ func getRegistryAuthString(username string, password string, dockerregistry stri
 func findYT3ConfigurationFiles(sourceDirectory string) ([]structs.ConfigurationWithProjectPath, error) {
 	foldersToSkip := []string{"node_modules", ".git", "bin"}
 	configName := "ytbdsettings.json"
-	configs := []structs.ConfigurationWithProjectPath{}
+	var configs []structs.ConfigurationWithProjectPath
 
 	err := filepath.Walk(sourceDirectory, func(path string, info os.FileInfo, e error) error {
 		if e != nil {
@@ -204,13 +212,13 @@ func findYT3ConfigurationFiles(sourceDirectory string) ([]structs.ConfigurationW
 	return configs, err
 }
 
-func buildAndPushImages(configurations []structs.ConfigurationWithProjectPath) {
+func buildAndPushImages(ctx context.Context, configurations []structs.ConfigurationWithProjectPath, auth string) {
 	for _, configuration := range configurations {
-		buildDockerImage(configuration)
+		buildDockerImage(ctx, configuration, auth)
 	}
 }
 
-func buildDockerImage(configuration structs.ConfigurationWithProjectPath) {
+func buildDockerImage(ctx context.Context, configuration structs.ConfigurationWithProjectPath, auth string) {
 	os.Setenv("DOCKER_BUILDKIT", "1")
 	os.Setenv("BUILDKIT_PROGRESS", "plain")
 	builderForProject, err := builder.Manager.GetBuilderForProject(configuration)
@@ -218,8 +226,12 @@ func buildDockerImage(configuration structs.ConfigurationWithProjectPath) {
 		log.Fatalln(err)
 	}
 
-	//builderForProject.GetBuildArguments(configuration)
-	log.Println(configuration.ServiceName, builderForProject.BuilderName)
+	arguments, err := builderForProject.GetBuildArguments(configuration)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	log.Println(configuration.ServiceName, builderForProject.BuilderName, arguments)
 }
 
 func pushImage() {

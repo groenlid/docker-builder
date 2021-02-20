@@ -10,7 +10,6 @@ var NodeBuilder = &Builder{
 		return conf.Builder.Type == "nodejs"
 	},
 	GetBuildArguments: func(conf structs.ConfigurationWithProjectPath) (*BuildArguments, error) {
-
 		return nil, nil
 	},
 }
