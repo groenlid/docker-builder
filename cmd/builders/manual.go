@@ -9,4 +9,7 @@ var ManualBuilder = &Builder{
 	CanBuildProject: func(conf structs.ConfigurationWithProjectPath) bool {
 		return conf.Builder.Type == "" || conf.Builder.Type == "manual"
 	},
+	GetBuildArguments: func(conf structs.ConfigurationWithProjectPath) (*BuildArguments, error) {
+		return nil, nil
+	},
 }

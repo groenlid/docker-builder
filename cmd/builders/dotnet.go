@@ -9,4 +9,7 @@ var DotnetBuilder = &Builder{
 	CanBuildProject: func(conf structs.ConfigurationWithProjectPath) bool {
 		return conf.Builder.Type == "dotnet"
 	},
+	GetBuildArguments: func(conf structs.ConfigurationWithProjectPath) (*BuildArguments, error) {
+		return nil, nil
+	},
 }
