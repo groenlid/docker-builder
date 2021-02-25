@@ -1,15 +1,19 @@
 package cmd
 
 import (
+	"archive/tar"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"strings"
+
+	"github.com/docker/docker/client"
 
 	"github.com/docker/docker/api/types"
 	builder "github.com/groenlid/docker-builder/cmd/builders"
@@ -49,7 +53,6 @@ func init() {
 }
 
 func runBuild(cmd *cobra.Command, args []string) {
-	fmt.Println("inside runbuild")
 	digestCachePath := ".digestcache"
 	digestCache := getDigestCache(digestCachePath)
 
@@ -71,30 +74,6 @@ func runBuild(cmd *cobra.Command, args []string) {
 	ctx := context.Background()
 
 	buildAndPushImages(ctx, configurations, authString)
-
-	persitDigestCache(digestCachePath, digestCache)
-}
-
-func runBuildOld(cmd *cobra.Command, args []string) {
-	fmt.Println("inside runbuild")
-	digestCachePath := ".digestcache"
-	digestCache := getDigestCache(digestCachePath)
-
-	flags := cmd.Flags()
-	dockerusername, _ := flags.GetString("registryUsername")
-	dockerpassword, _ := flags.GetString("registryPassword")
-	dockerregistry, _ := flags.GetString("registry")
-
-	loginToAcr(dockerusername, dockerpassword, dockerregistry)
-	configurations, err := findYT3ConfigurationFiles(".")
-
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	ctx := context.Background()
-
-	buildAndPushImages(ctx, configurations, "")
 
 	persitDigestCache(digestCachePath, digestCache)
 }
@@ -142,15 +121,6 @@ func persitDigestCache(path string, digestToSave digestcache) {
 	writeErr := ioutil.WriteFile(path, bytes, 0666)
 	if writeErr != nil {
 		log.Println(writeErr)
-	}
-}
-
-func loginToAcr(username string, password string, dockerregistry string) {
-	log.Printf("Logging in to docker registry with username %v and password %v", username, password)
-	cmd := exec.Command("docker", "login", "-u", username, "-p", password, dockerregistry)
-	err := cmd.Run()
-	if err != nil {
-		log.Fatalf("Could not login to docker registry error: %v", err)
 	}
 }
 
@@ -205,7 +175,10 @@ func findYT3ConfigurationFiles(sourceDirectory string) ([]structs.ConfigurationW
 			return nil
 		}
 
-		configs = append(configs, structs.ConfigurationWithProjectPath{Configuration: configuration, ProjectPath: path})
+		configs = append(configs, structs.ConfigurationWithProjectPath{
+			Configuration: configuration,
+			ProjectPath:   filepath.Dir(path),
+		})
 		return nil
 	})
 
@@ -214,13 +187,39 @@ func findYT3ConfigurationFiles(sourceDirectory string) ([]structs.ConfigurationW
 
 func buildAndPushImages(ctx context.Context, configurations []structs.ConfigurationWithProjectPath, auth string) {
 	for _, configuration := range configurations {
-		buildDockerImage(ctx, configuration, auth)
+		buildDockerImage(ctx, configuration)
 	}
 }
 
-func buildDockerImage(ctx context.Context, configuration structs.ConfigurationWithProjectPath, auth string) {
+func getContextDirForConfiguration(ctx context.Context, configuration structs.ConfigurationWithProjectPath) (*tar.Reader, error) {
+	_, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+
+	file := filepath.Join(os.TempDir(), fmt.Sprintf("%s.tar", configuration.ServiceName))
+
+	log.Printf("Creating tar fil at path %s from path %s", file, configuration.ProjectPath)
+
+	tarError := tarDirectory(configuration.ProjectPath, file)
+
+	if tarError != nil {
+		return nil, tarError
+	}
+
+	reader, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	tarReader := tar.NewReader(reader)
+	return tarReader, nil
+}
+
+func buildDockerImage(ctx context.Context, configuration structs.ConfigurationWithProjectPath) {
 	os.Setenv("DOCKER_BUILDKIT", "1")
 	os.Setenv("BUILDKIT_PROGRESS", "plain")
+	log.Printf("Building project %s", configuration.ServiceName)
+
 	builderForProject, err := builder.Manager.GetBuilderForProject(configuration)
 	if err != nil {
 		log.Fatalln(err)
@@ -231,7 +230,90 @@ func buildDockerImage(ctx context.Context, configuration structs.ConfigurationWi
 		log.Fatalln(err)
 	}
 
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	tarReader, err := getContextDirForConfiguration(ctx, configuration)
+
+	if err != nil {
+		log.Fatalln(err)
+	}
+	return
+	buildOptions := types.ImageBuildOptions{
+		Dockerfile: arguments.Dockerfile,
+	}
+
+	cli.ImageBuild(ctx, tarReader, buildOptions)
+
 	log.Println(configuration.ServiceName, builderForProject.BuilderName, arguments)
+}
+
+func tarDirectory(source, target string) error {
+	tarfile, err := os.Create(target)
+	if err != nil {
+		return err
+	}
+	defer tarfile.Close()
+
+	tarball := tar.NewWriter(tarfile)
+	defer tarball.Close()
+
+	info, err := os.Stat(source)
+	if err != nil {
+		return err
+	}
+
+	var baseDir string
+	if info.IsDir() {
+		baseDir = filepath.Base(source)
+	}
+
+	return filepath.Walk(source,
+		func(path string, info os.FileInfo, err error) error {
+			foldersToSkip := []string{"node_modules", ".git", "bin"}
+			if err != nil {
+				return err
+			}
+
+			if info.IsDir() {
+				for _, folderToSkip := range foldersToSkip {
+					if folderToSkip == info.Name() {
+						return filepath.SkipDir
+					}
+				}
+			}
+
+			header, err := tar.FileInfoHeader(info, info.Name())
+			if err != nil {
+				return err
+			}
+
+			if baseDir != "" {
+				header.Name = filepath.Join(baseDir, strings.TrimPrefix(path, source))
+			}
+
+			if err := tarball.WriteHeader(header); err != nil {
+				return err
+			}
+
+			if info.IsDir() {
+				return nil
+			}
+
+			if !info.Mode().IsRegular() {
+				return nil
+			}
+
+			file, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			defer file.Close()
+			_, err = io.Copy(tarball, file)
+			return err
+		})
 }
 
 func pushImage() {

@@ -107,3 +107,5 @@ dist
 ytbdsettings.json
 .idea
 main
+runtest.sh
+docker-builder
