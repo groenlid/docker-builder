@@ -1,21 +1,23 @@
 package builder
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 
 	"github.com/groenlid/docker-builder/cmd/structs"
 )
 
 type Builder struct {
-	BuilderName       string
-	CanBuildProject   func(conf structs.ConfigurationWithProjectPath) bool
+	BuilderNames      []string
 	GetBuildArguments func(conf structs.ConfigurationWithProjectPath) (*BuildArguments, error)
 }
 
 type BuildArguments struct {
-	Dockerfile              string
+	DockerfileContent       string
 	DockerBuildContextPaths []string
+	DockerBuildRootFolder   string
 }
 
 type BuilderManager struct {
@@ -24,17 +26,26 @@ type BuilderManager struct {
 
 func (m *BuilderManager) PrintBuilders() {
 	for _, builder := range m.Builders {
-		log.Println(builder.BuilderName)
+		log.Println(builder.BuilderNames)
 	}
 }
 
-func (m *BuilderManager) GetBuilderForProject(conf structs.ConfigurationWithProjectPath) (*Builder, error) {
+func (m *BuilderManager) GetBuildArgumentsForProject(conf structs.ConfigurationWithProjectPath) (*BuildArguments, error) {
+	baseBuilder := &structs.BaseBuilder{}
+
+	err := json.Unmarshal(conf.Builder, &baseBuilder)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, builder := range m.Builders {
-		if builder.CanBuildProject(conf) {
-			return builder, nil
+		for _, builderName := range builder.BuilderNames {
+			if builderName == baseBuilder.Type {
+				return builder.GetBuildArguments(conf)
+			}
 		}
 	}
-	return nil, errors.New("No builder found for configuration at path :" + conf.ProjectPath)
+	return nil, errors.New(fmt.Sprintf("No builder found for service %s at path %s", conf.ServiceName, conf.ProjectPath))
 }
 
 var Manager = &BuilderManager{

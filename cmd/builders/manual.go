@@ -5,10 +5,7 @@ import (
 )
 
 var ManualBuilder = &Builder{
-	BuilderName: "manual",
-	CanBuildProject: func(conf structs.ConfigurationWithProjectPath) bool {
-		return conf.Builder.Type == "" || conf.Builder.Type == "manual"
-	},
+	BuilderNames: []string {"manual", ""},
 	GetBuildArguments: func(conf structs.ConfigurationWithProjectPath) (*BuildArguments, error) {
 		return nil, nil
 	},

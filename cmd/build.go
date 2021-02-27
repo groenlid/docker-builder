@@ -31,6 +31,8 @@ var buildCmd = &cobra.Command{
 	},
 }
 
+var foldersToSkip = []string{"node_modules", ".git", "bin"}
+
 func init() {
 	rootCmd.AddCommand(buildCmd)
 
@@ -138,7 +140,6 @@ func getRegistryAuthString(username string, password string, dockerregistry stri
 }
 
 func findYT3ConfigurationFiles(sourceDirectory string) ([]structs.ConfigurationWithProjectPath, error) {
-	foldersToSkip := []string{"node_modules", ".git", "bin"}
 	configName := "ytbdsettings.json"
 	var configs []structs.ConfigurationWithProjectPath
 
@@ -220,12 +221,7 @@ func buildDockerImage(ctx context.Context, configuration structs.ConfigurationWi
 	os.Setenv("BUILDKIT_PROGRESS", "plain")
 	log.Printf("Building project %s", configuration.ServiceName)
 
-	builderForProject, err := builder.Manager.GetBuilderForProject(configuration)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	arguments, err := builderForProject.GetBuildArguments(configuration)
+	arguments, err := builder.Manager.GetBuildArgumentsForProject(configuration)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -240,14 +236,15 @@ func buildDockerImage(ctx context.Context, configuration structs.ConfigurationWi
 	if err != nil {
 		log.Fatalln(err)
 	}
-	return
-	buildOptions := types.ImageBuildOptions{
-		Dockerfile: arguments.Dockerfile,
-	}
+	log.Println(configuration.ServiceName, arguments)
+	log.Print(cli, tarReader)
+	/*
+		buildOptions := types.ImageBuildOptions{
+			Dockerfile: arguments.Dockerfile,
+		}
 
-	cli.ImageBuild(ctx, tarReader, buildOptions)
-
-	log.Println(configuration.ServiceName, builderForProject.BuilderName, arguments)
+		cli.ImageBuild(ctx, tarReader, buildOptions)
+	*/
 }
 
 func tarDirectory(source, target string) error {
@@ -272,7 +269,6 @@ func tarDirectory(source, target string) error {
 
 	return filepath.Walk(source,
 		func(path string, info os.FileInfo, err error) error {
-			foldersToSkip := []string{"node_modules", ".git", "bin"}
 			if err != nil {
 				return err
 			}
