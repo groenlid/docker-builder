@@ -71,7 +71,6 @@ var NodeBuilder = &Builder{
 	BuilderNames: []string{"nodejs"},
 	GetBuildArguments: func(conf structs.ConfigurationWithProjectPath) (*BuildArguments, error) {
 		builderConfig := &NodejsBuilderConfig{}
-		log.Println(conf.Builder)
 		err := json.Unmarshal(conf.Builder, builderConfig)
 		if err != nil {
 			return nil, err

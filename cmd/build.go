@@ -192,11 +192,7 @@ func buildAndPushImages(ctx context.Context, configurations []structs.Configurat
 	}
 }
 
-func getContextDirForConfiguration(ctx context.Context, configuration structs.ConfigurationWithProjectPath) (*tar.Reader, error) {
-	_, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
+func getContextDirForConfiguration(ctx context.Context, configuration structs.ConfigurationWithProjectPath, buildArguments *builder.BuildArguments) (*tar.Reader, error) {
 
 	file := filepath.Join(os.TempDir(), fmt.Sprintf("%s.tar", configuration.ServiceName))
 
@@ -226,25 +222,27 @@ func buildDockerImage(ctx context.Context, configuration structs.ConfigurationWi
 		log.Fatalln(err)
 	}
 
+	if arguments == nil {
+		return
+	}
+
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	tarReader, err := getContextDirForConfiguration(ctx, configuration)
+	tarReader, err := getContextDirForConfiguration(ctx, configuration, arguments)
 
 	if err != nil {
 		log.Fatalln(err)
 	}
-	log.Println(configuration.ServiceName, arguments)
-	log.Print(cli, tarReader)
-	/*
-		buildOptions := types.ImageBuildOptions{
-			Dockerfile: arguments.Dockerfile,
-		}
 
-		cli.ImageBuild(ctx, tarReader, buildOptions)
-	*/
+	buildOptions := types.ImageBuildOptions{
+		Dockerfile: arguments.Dockerfile,
+	}
+
+	cli.ImageBuild(ctx, tarReader, buildOptions)
+
 }
 
 func tarDirectory(source, target string) error {
