@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/groenlid/docker-builder/cmd/structs"
 	"log"
 	"os"
-
-	"github.com/groenlid/docker-builder/cmd/structs"
+	"path"
 )
 
 type NodejsBuilderConfig struct {
@@ -60,9 +60,9 @@ func getInstallCommand(projectType NodeProjectType) string {
 	case Unknown:
 		return ""
 	case Npm:
-		return "npm ci"
+		return "RUN npm ci"
 	case Yarn:
-		return "yarn"
+		return "RUN yarn"
 	}
 	return ""
 }
@@ -117,10 +117,20 @@ var NodeBuilder = &Builder{
 			CMD %s
 		`, builderConfig.NodeVersion, lockFile, installCommand, buildCommand, builderConfig.RunCommand)
 
+		tmpDir := os.TempDir()
+		dockerFilePath := path.Join(tmpDir, "Dockerfile")
+		bytesToSend := []byte(dockerFilePath)
+		err = os.WriteFile(dockerFilePath, bytesToSend, 0755)
+		if err != nil {
+			return nil, err
+		}
+
 		arguments := &BuildArguments{
 			DockerfileContent:       dockercontent,
-			DockerBuildRootFolder:   conf.ProjectPath,
-			DockerBuildContextPaths: []string{conf.ProjectPath},
+			DockerBuildContextPaths: map[string]string{
+				conf.ProjectPath : "",
+				tmpDir : "",
+			},
 		}
 
 		log.Println(dockercontent, arguments)

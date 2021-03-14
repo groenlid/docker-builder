@@ -3,17 +3,21 @@ package cmd
 import (
 	"archive/tar"
 	"context"
+	"crypto/md5"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
-	"fmt"
+	"github.com/docker/docker/client"
+	"github.com/go-git/go-git/v5"
 	"io"
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
+	"sort"
 	"strings"
-
-	"github.com/docker/docker/client"
+	"time"
 
 	"github.com/docker/docker/api/types"
 	builder "github.com/groenlid/docker-builder/cmd/builders"
@@ -32,19 +36,10 @@ var buildCmd = &cobra.Command{
 }
 
 var foldersToSkip = []string{"node_modules", ".git", "bin"}
+var tmpFolder = ".builder"
 
 func init() {
 	rootCmd.AddCommand(buildCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// buildCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// buildCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 	buildCmd.Flags().StringP("registryUsername", "u", "", "The username for the docker registry being used")
 	buildCmd.Flags().StringP("registryPassword", "p", "", "The password for the docker registry being used")
 	buildCmd.Flags().StringP("registry", "r", "", "The docker registry being used")
@@ -192,22 +187,88 @@ func buildAndPushImages(ctx context.Context, configurations []structs.Configurat
 	}
 }
 
-func getContextDirForConfiguration(ctx context.Context, configuration structs.ConfigurationWithProjectPath, buildArguments *builder.BuildArguments) (*tar.Reader, error) {
+func getHexHasForContent (content string) string {
+	hash := md5.Sum([]byte(content))
+	return hex.EncodeToString(hash[:])
+}
 
-	file := filepath.Join(os.TempDir(), fmt.Sprintf("%s.tar", configuration.ServiceName))
+func getCommitIdForFolder (folder string) string {
 
-	log.Printf("Creating tar fil at path %s from path %s", file, configuration.ProjectPath)
-
-	tarError := tarDirectory(configuration.ProjectPath, file)
-
-	if tarError != nil {
-		return nil, tarError
+	r, err := git.PlainOpen(".")
+	if err != nil {
+		log.Fatalln(err)
 	}
 
-	reader, err := os.Open(file)
+
+	cIter, err := r.Log(&git.LogOptions{PathFilter: func(s string) bool {
+		return strings.HasPrefix(s, folder)
+	}})
+	defer cIter.Close()
+
+	if err != nil {
+		log.Fatalln(err)
+	}
+	log.Println("Fetched commit")
+
+	commit, err := cIter.Next()
+
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	return commit.Hash.String()
+}
+
+func getContextFilePath(ctx context.Context, buildArguments *builder.BuildArguments, builderTmpFolder string) (string, error) {
+
+	contextPaths := make([]string, 0, len(buildArguments.DockerBuildContextPaths))
+	for k := range buildArguments.DockerBuildContextPaths {
+		contextPaths = append(contextPaths, k)
+	}
+	sort.Strings(contextPaths)
+
+	dockerContentHash := getHexHasForContent(buildArguments.DockerfileContent)
+	log.Printf("Docker content hash %x", dockerContentHash)
+	hashes := []string{ dockerContentHash }
+
+	for _, item := range contextPaths {
+		log.Printf("Fetching has for folder %s", item)
+		start := time.Now()
+		hash := getCommitIdForFolder(item)
+		hashes = append(hashes, hash)
+		elapsed := time.Now().Sub(start)
+		log.Printf("Hash for folder %s is %s. It took %n ms", item, hash, elapsed.Milliseconds())
+	}
+
+	file := filepath.Join(builderTmpFolder, "contexts", strings.Join(hashes, "-") + ".tar")
+	return file, nil
+}
+
+func createOrReadDockerContext (ctx context.Context, configuration structs.ConfigurationWithProjectPath, buildArguments *builder.BuildArguments, builderTmpFolder string) (*tar.Reader, error) {
+
+	contextPath, err := getContextFilePath(ctx, buildArguments, builderTmpFolder)
+
+	log.Printf("Context path is %s", contextPath)
 	if err != nil {
 		return nil, err
 	}
+
+	reader, err := os.Open(contextPath)
+
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+
+		log.Printf("Creating tar file at path %s", contextPath)
+		// TODO: Create a tmp file, then rename instead...
+		tarError := tarDirectories(buildArguments.DockerBuildContextPaths, contextPath)
+
+		if tarError != nil {
+			return nil, tarError
+		}
+	}
+
 	tarReader := tar.NewReader(reader)
 	return tarReader, nil
 }
@@ -216,6 +277,18 @@ func buildDockerImage(ctx context.Context, configuration structs.ConfigurationWi
 	os.Setenv("DOCKER_BUILDKIT", "1")
 	os.Setenv("BUILDKIT_PROGRESS", "plain")
 	log.Printf("Building project %s", configuration.ServiceName)
+
+	buildFolderForProject := path.Join(tmpFolder, configuration.ServiceName)
+	mkdirError := os.MkdirAll(buildFolderForProject, 0755)
+
+	if mkdirError != nil {
+		log.Fatalln(mkdirError)
+	}
+
+	mkcontextdirError := os.MkdirAll(path.Join(buildFolderForProject, "contexts"), 0755)
+	if mkcontextdirError != nil {
+		log.Fatalln(mkcontextdirError)
+	}
 
 	arguments, err := builder.Manager.GetBuildArgumentsForProject(configuration)
 	if err != nil {
@@ -226,26 +299,68 @@ func buildDockerImage(ctx context.Context, configuration structs.ConfigurationWi
 		return
 	}
 
+	tarReader, err := createOrReadDockerContext(ctx, configuration, arguments, buildFolderForProject)
+
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	if err != nil {
+		log.Fatalln(err)
+	}
+
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	tarReader, err := getContextDirForConfiguration(ctx, configuration, arguments)
+	buildOptions := types.ImageBuildOptions{
+		Dockerfile: "Dockerfile",
+		Tags:       []string{"latest"},
+	}
+
+	imageBuildResponse, err := cli.ImageBuild(ctx, tarReader, buildOptions)
 
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	buildOptions := types.ImageBuildOptions{
-		Dockerfile: arguments.Dockerfile,
+	defer imageBuildResponse.Body.Close()
+	_, err = io.Copy(os.Stdout, imageBuildResponse.Body)
+	if err != nil {
+		log.Fatal(err, " :unable to read image build response")
 	}
-
-	cli.ImageBuild(ctx, tarReader, buildOptions)
-
 }
 
-func tarDirectory(source, target string) error {
+func addFileinfoToTarArchive(tarball *tar.Writer, filePath string, info os.FileInfo, pathInTar string) error {
+	header, err := tar.FileInfoHeader(info, info.Name())
+	if err != nil {
+		return err
+	}
+	header.Name = pathInTar
+	if err := tarball.WriteHeader(header); err != nil {
+		return err
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = io.Copy(tarball, file)
+	return err
+}
+
+func addPathToTarArchive(tarball *tar.Writer, filePath string, pathInTar string) error {
+	stat, err := os.Stat(filePath)
+	if err != nil {
+		return err
+	}
+	addFileinfoToTarArchive(tarball, filePath, stat, pathInTar)
+	return nil
+}
+
+func tarDirectories(sources map[string]string, target string) error {
 	tarfile, err := os.Create(target)
 	if err != nil {
 		return err
@@ -255,59 +370,49 @@ func tarDirectory(source, target string) error {
 	tarball := tar.NewWriter(tarfile)
 	defer tarball.Close()
 
-	info, err := os.Stat(source)
-	if err != nil {
-		return err
-	}
+	for source, inContext := range sources {
 
-	var baseDir string
-	if info.IsDir() {
-		baseDir = filepath.Base(source)
-	}
+		stat, err := os.Stat(source)
 
-	return filepath.Walk(source,
-		func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
+		if !stat.IsDir() {
+			addFileinfoToTarArchive(tarball, source, stat, inContext)
+			continue
+		}
+		if err != nil {
+			return err
+		}
 
-			if info.IsDir() {
-				for _, folderToSkip := range foldersToSkip {
-					if folderToSkip == info.Name() {
-						return filepath.SkipDir
+		err = filepath.Walk(source,
+			func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+
+				if info.IsDir() {
+					for _, folderToSkip := range foldersToSkip {
+						if folderToSkip == info.Name() {
+							return filepath.SkipDir
+						}
 					}
 				}
-			}
 
-			header, err := tar.FileInfoHeader(info, info.Name())
-			if err != nil {
-				return err
-			}
+				if info.IsDir() {
+					return nil
+				}
 
-			if baseDir != "" {
-				header.Name = filepath.Join(baseDir, strings.TrimPrefix(path, source))
-			}
+				if !info.Mode().IsRegular() {
+					return nil
+				}
 
-			if err := tarball.WriteHeader(header); err != nil {
-				return err
-			}
-
-			if info.IsDir() {
-				return nil
-			}
-
-			if !info.Mode().IsRegular() {
-				return nil
-			}
-
-			file, err := os.Open(path)
-			if err != nil {
-				return err
-			}
-			defer file.Close()
-			_, err = io.Copy(tarball, file)
+				filepathInTar := strings.TrimPrefix(path, source)
+				return addFileinfoToTarArchive(tarball, path, info, filepathInTar)
+			})
+		if err != nil {
 			return err
-		})
+		}
+	}
+	return nil
+
 }
 
 func pushImage() {

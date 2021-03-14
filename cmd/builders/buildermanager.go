@@ -16,8 +16,7 @@ type Builder struct {
 
 type BuildArguments struct {
 	DockerfileContent       string
-	DockerBuildContextPaths []string
-	DockerBuildRootFolder   string
+	DockerBuildContextPaths map[string]string
 }
 
 type BuilderManager struct {

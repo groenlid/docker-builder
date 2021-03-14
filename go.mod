@@ -9,6 +9,7 @@ require (
 	github.com/docker/docker v20.10.2+incompatible
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-units v0.4.0 // indirect
+	github.com/go-git/go-git/v5 v5.2.0 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/moby/term v0.0.0-20201216013528-df9cb8a40635 // indirect
