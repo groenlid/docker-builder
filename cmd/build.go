@@ -7,8 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"github.com/docker/docker/client"
-	"github.com/go-git/go-git/v5"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -18,6 +17,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/docker/docker/client"
+	"github.com/go-git/go-git/v5"
 
 	"github.com/docker/docker/api/types"
 	builder "github.com/groenlid/docker-builder/cmd/builders"
@@ -187,18 +189,55 @@ func buildAndPushImages(ctx context.Context, configurations []structs.Configurat
 	}
 }
 
-func getHexHasForContent (content string) string {
+func getHexHasForContent(content string) string {
 	hash := md5.Sum([]byte(content))
 	return hex.EncodeToString(hash[:])
 }
 
-func getCommitIdForFolder (folder string) string {
+func getHexForFolder(folderPath string) string {
+	hasher := md5.New()
+	err := filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			for _, folderToSkip := range foldersToSkip {
+				if folderToSkip == info.Name() {
+					return filepath.SkipDir
+				}
+			}
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+
+		reader, err := os.Open(path)
+
+		if err != nil {
+			return err
+		}
+		io.Copy(hasher, reader)
+		return nil
+	})
+
+	if err != nil {
+		log.Fatalln(err)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func getCommitIdForFolder(folder string) string {
 
 	r, err := git.PlainOpen(".")
 	if err != nil {
 		log.Fatalln(err)
 	}
-
 
 	cIter, err := r.Log(&git.LogOptions{PathFilter: func(s string) bool {
 		return strings.HasPrefix(s, folder)
@@ -208,9 +247,9 @@ func getCommitIdForFolder (folder string) string {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	log.Println("Fetched commit")
 
 	commit, err := cIter.Next()
+	log.Println("Fetched commit")
 
 	if err != nil {
 		log.Fatalln(err)
@@ -227,24 +266,24 @@ func getContextFilePath(ctx context.Context, buildArguments *builder.BuildArgume
 	}
 	sort.Strings(contextPaths)
 
-	dockerContentHash := getHexHasForContent(buildArguments.DockerfileContent)
-	log.Printf("Docker content hash %x", dockerContentHash)
-	hashes := []string{ dockerContentHash }
+	hashes := []string{}
 
 	for _, item := range contextPaths {
-		log.Printf("Fetching has for folder %s", item)
+		log.Printf("Fetching hash for folder %s", item)
 		start := time.Now()
-		hash := getCommitIdForFolder(item)
+
+		hash := getHexForFolder(item)
+		//hash := getCommitIdForFolder(item)
 		hashes = append(hashes, hash)
 		elapsed := time.Now().Sub(start)
-		log.Printf("Hash for folder %s is %s. It took %n ms", item, hash, elapsed.Milliseconds())
+		log.Printf("Hash for folder %s is %s. It took %x ms", item, hash, elapsed.Milliseconds())
 	}
 
-	file := filepath.Join(builderTmpFolder, "contexts", strings.Join(hashes, "-") + ".tar")
+	file := filepath.Join(builderTmpFolder, "contexts", strings.Join(hashes, "-")+".tar")
 	return file, nil
 }
 
-func createOrReadDockerContext (ctx context.Context, configuration structs.ConfigurationWithProjectPath, buildArguments *builder.BuildArguments, builderTmpFolder string) (*tar.Reader, error) {
+func createOrReadDockerContext(ctx context.Context, configuration structs.ConfigurationWithProjectPath, buildArguments *builder.BuildArguments, builderTmpFolder string) (*tar.Reader, error) {
 
 	contextPath, err := getContextFilePath(ctx, buildArguments, builderTmpFolder)
 

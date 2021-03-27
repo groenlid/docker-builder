@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/groenlid/docker-builder/cmd/structs"
-	"log"
+	"io/ioutil"
 	"os"
 	"path"
+
+	"github.com/groenlid/docker-builder/cmd/structs"
 )
 
 type NodejsBuilderConfig struct {
@@ -117,23 +118,26 @@ var NodeBuilder = &Builder{
 			CMD %s
 		`, builderConfig.NodeVersion, lockFile, installCommand, buildCommand, builderConfig.RunCommand)
 
-		tmpDir := os.TempDir()
+		tmpDir, err := ioutil.TempDir("", "")
+
+		if err != nil {
+			return nil, err
+		}
 		dockerFilePath := path.Join(tmpDir, "Dockerfile")
-		bytesToSend := []byte(dockerFilePath)
+		bytesToSend := []byte(dockercontent)
 		err = os.WriteFile(dockerFilePath, bytesToSend, 0755)
 		if err != nil {
 			return nil, err
 		}
 
 		arguments := &BuildArguments{
-			DockerfileContent:       dockercontent,
+			DockerfileContent: dockercontent,
 			DockerBuildContextPaths: map[string]string{
-				conf.ProjectPath : "",
-				tmpDir : "",
+				conf.ProjectPath: "",
+				tmpDir:           "",
 			},
 		}
 
-		log.Println(dockercontent, arguments)
 		return arguments, nil
 	},
 }
