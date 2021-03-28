@@ -123,6 +123,7 @@ var NodeBuilder = &Builder{
 		if err != nil {
 			return nil, err
 		}
+
 		dockerFilePath := path.Join(tmpDir, "Dockerfile")
 		bytesToSend := []byte(dockercontent)
 		err = os.WriteFile(dockerFilePath, bytesToSend, 0755)

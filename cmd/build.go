@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"archive/tar"
+	"bufio"
 	"context"
 	"crypto/md5"
 	"encoding/base64"
@@ -37,7 +38,7 @@ var buildCmd = &cobra.Command{
 	},
 }
 
-var foldersToSkip = []string{"node_modules", ".git", "bin"}
+var foldersToSkip = []string{"node_modules", ".git", "bin", ".builder"}
 var tmpFolder = ".builder"
 
 func init() {
@@ -157,7 +158,7 @@ func findYT3ConfigurationFiles(sourceDirectory string) ([]structs.ConfigurationW
 			return nil
 		}
 
-		log.Printf("Found configuration file at path: %v", path)
+		// log.Printf("Found configuration file at path: %v", path)
 
 		fileContent, err := ioutil.ReadFile(path)
 		if err != nil {
@@ -283,7 +284,7 @@ func getContextFilePath(ctx context.Context, buildArguments *builder.BuildArgume
 	return file, nil
 }
 
-func createOrReadDockerContext(ctx context.Context, configuration structs.ConfigurationWithProjectPath, buildArguments *builder.BuildArguments, builderTmpFolder string) (*tar.Reader, error) {
+func createOrReadDockerContext(ctx context.Context, configuration structs.ConfigurationWithProjectPath, buildArguments *builder.BuildArguments, builderTmpFolder string) (*os.File, error) {
 
 	contextPath, err := getContextFilePath(ctx, buildArguments, builderTmpFolder)
 
@@ -307,9 +308,7 @@ func createOrReadDockerContext(ctx context.Context, configuration structs.Config
 			return nil, tarError
 		}
 	}
-
-	tarReader := tar.NewReader(reader)
-	return tarReader, nil
+	return reader, nil
 }
 
 func buildDockerImage(ctx context.Context, configuration structs.ConfigurationWithProjectPath) {
@@ -338,11 +337,8 @@ func buildDockerImage(ctx context.Context, configuration structs.ConfigurationWi
 		return
 	}
 
-	tarReader, err := createOrReadDockerContext(ctx, configuration, arguments, buildFolderForProject)
-
-	if err != nil {
-		log.Fatalln(err)
-	}
+	reader, err := createOrReadDockerContext(ctx, configuration, arguments, buildFolderForProject)
+	defer reader.Close()
 
 	if err != nil {
 		log.Fatalln(err)
@@ -355,20 +351,23 @@ func buildDockerImage(ctx context.Context, configuration structs.ConfigurationWi
 
 	buildOptions := types.ImageBuildOptions{
 		Dockerfile: "Dockerfile",
-		Tags:       []string{"latest"},
+		Tags:       []string{configuration.ServiceName},
 	}
 
-	imageBuildResponse, err := cli.ImageBuild(ctx, tarReader, buildOptions)
+	imageBuildResponse, err := cli.ImageBuild(ctx, reader, buildOptions)
 
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	defer imageBuildResponse.Body.Close()
-	_, err = io.Copy(os.Stdout, imageBuildResponse.Body)
+	id, err := handleDockerBuildResponse(imageBuildResponse.Body)
+
 	if err != nil {
-		log.Fatal(err, " :unable to read image build response")
+		log.Fatal(err)
 	}
+
+	log.Printf("Id of dockerimage: %s", id)
+
 }
 
 func addFileinfoToTarArchive(tarball *tar.Writer, filePath string, info os.FileInfo, pathInTar string) error {
@@ -388,6 +387,60 @@ func addFileinfoToTarArchive(tarball *tar.Writer, filePath string, info os.FileI
 	defer file.Close()
 	_, err = io.Copy(tarball, file)
 	return err
+}
+
+type dockerMessage struct {
+	ID          string `json:"id"`
+	Stream      string `json:"stream"`
+	Error       string `json:"error"`
+	ErrorDetail struct {
+		Message string
+	}
+	Status   string `json:"status"`
+	Progress string `json:"progress"`
+	Aux      struct {
+		ID string `json:"ID"`
+	} `json:"aux"`
+}
+
+func handleDockerBuildResponse(resp io.ReadCloser) (string, error) {
+	defer resp.Close()
+
+	scanner := bufio.NewScanner(resp)
+	msg := dockerMessage{}
+	id := ""
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		msg.ID = ""
+		msg.Stream = ""
+		msg.Error = ""
+		msg.ErrorDetail.Message = ""
+		msg.Aux.ID = ""
+		msg.Status = ""
+		msg.Progress = ""
+		if err := json.Unmarshal(line, &msg); err == nil {
+			if msg.Error != "" {
+				return id, fmt.Errorf("%s", msg.Error)
+			}
+			if msg.Aux.ID != "" {
+				id = msg.Aux.ID
+			} else if msg.Status != "" {
+				if msg.Progress != "" {
+					log.Printf("  %s :: %s :: %s\n", msg.Status, msg.ID, msg.Progress)
+				} else {
+					log.Printf("  %s :: %s\n", msg.Status, msg.ID)
+				}
+			} else if msg.Stream != "" {
+				log.Printf("  %s", msg.Stream)
+			} else {
+				log.Printf("Unable to handle line: %s", string(line))
+			}
+		} else {
+			log.Printf("Unable to unmarshal line [%s] ==> %v", string(line), err)
+		}
+	}
+
+	return id, nil
 }
 
 func addPathToTarArchive(tarball *tar.Writer, filePath string, pathInTar string) error {
