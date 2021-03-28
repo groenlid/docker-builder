@@ -34,10 +34,7 @@ var buildCmd = &cobra.Command{
 	Short: "Builds the services",
 	Long:  `Builds the services under the current working directory`,
 	Run: func(cmd *cobra.Command, args []string) {
-		start := time.Now()
 		runBuild(cmd, args)
-		elapsed := time.Now().Sub(start)
-		log.Printf("Command took %s.", elapsed)
 	},
 }
 
