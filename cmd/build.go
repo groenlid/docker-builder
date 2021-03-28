@@ -34,7 +34,10 @@ var buildCmd = &cobra.Command{
 	Short: "Builds the services",
 	Long:  `Builds the services under the current working directory`,
 	Run: func(cmd *cobra.Command, args []string) {
+		start := time.Now()
 		runBuild(cmd, args)
+		elapsed := time.Now().Sub(start)
+		log.Printf("Command took %s.", elapsed)
 	},
 }
 
@@ -277,7 +280,7 @@ func getContextFilePath(ctx context.Context, buildArguments *builder.BuildArgume
 		//hash := getCommitIdForFolder(item)
 		hashes = append(hashes, hash)
 		elapsed := time.Now().Sub(start)
-		log.Printf("Hash for folder %s is %s. It took %x ms", item, hash, elapsed.Milliseconds())
+		log.Printf("Hash for folder %s is %s. It took %s ms", item, hash, elapsed)
 	}
 
 	file := filepath.Join(builderTmpFolder, "contexts", strings.Join(hashes, "-")+".tar")
