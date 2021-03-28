@@ -132,7 +132,6 @@ var NodeBuilder = &Builder{
 		}
 
 		arguments := &BuildArguments{
-			DockerfileContent: dockercontent,
 			DockerBuildContextPaths: map[string]string{
 				conf.ProjectPath: "",
 				tmpDir:           "",

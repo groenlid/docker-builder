@@ -307,6 +307,9 @@ func createOrReadDockerContext(ctx context.Context, configuration structs.Config
 		if tarError != nil {
 			return nil, tarError
 		}
+
+		reader, err := os.Open(contextPath)
+		return reader, err
 	}
 	return reader, nil
 }
@@ -350,8 +353,11 @@ func buildDockerImage(ctx context.Context, configuration structs.ConfigurationWi
 	}
 
 	buildOptions := types.ImageBuildOptions{
-		Dockerfile: "Dockerfile",
-		Tags:       []string{configuration.ServiceName},
+		Tags: []string{configuration.ServiceName},
+	}
+
+	if arguments.DockerFilePath != "" {
+		buildOptions.Dockerfile = arguments.DockerFilePath
 	}
 
 	imageBuildResponse, err := cli.ImageBuild(ctx, reader, buildOptions)
