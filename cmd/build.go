@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/docker/docker/client"
-	"github.com/go-git/go-git/v5"
 
 	"github.com/docker/docker/api/types"
 	builder "github.com/groenlid/docker-builder/cmd/builders"
@@ -233,32 +232,6 @@ func getHexForFolder(folderPath string) string {
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }
 
-func getCommitIdForFolder(folder string) string {
-
-	r, err := git.PlainOpen(".")
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	cIter, err := r.Log(&git.LogOptions{PathFilter: func(s string) bool {
-		return strings.HasPrefix(s, folder)
-	}})
-	defer cIter.Close()
-
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	commit, err := cIter.Next()
-	log.Println("Fetched commit")
-
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	return commit.Hash.String()
-}
-
 func getContextFilePath(ctx context.Context, buildArguments *builder.BuildArguments, builderTmpFolder string) (string, error) {
 
 	contextPaths := make([]string, 0, len(buildArguments.DockerBuildContextPaths))
@@ -274,10 +247,9 @@ func getContextFilePath(ctx context.Context, buildArguments *builder.BuildArgume
 		start := time.Now()
 
 		hash := getHexForFolder(item)
-		//hash := getCommitIdForFolder(item)
 		hashes = append(hashes, hash)
 		elapsed := time.Now().Sub(start)
-		log.Printf("Hash for folder %s is %s. It took %s ms", item, hash, elapsed)
+		log.Printf("Hash for folder %s is %s. It took %s", item, hash, elapsed)
 	}
 
 	file := filepath.Join(builderTmpFolder, "contexts", strings.Join(hashes, "-")+".tar")
