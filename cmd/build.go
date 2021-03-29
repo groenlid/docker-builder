@@ -189,7 +189,7 @@ func buildAndPushImages(ctx context.Context, configurations []structs.Configurat
 	}
 }
 
-func getHexHasForContent(content string) string {
+func getHexHashForContent(content string) string {
 	hash := md5.Sum([]byte(content))
 	return hex.EncodeToString(hash[:])
 }
@@ -232,7 +232,7 @@ func getHexForFolder(folderPath string) string {
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }
 
-func getContextFilePath(ctx context.Context, buildArguments *builder.BuildArguments, builderTmpFolder string) (string, error) {
+func getContextFilePath(ctx context.Context, buildArguments *builder.BuildArguments, contextFolder string) (string, error) {
 
 	contextPaths := make([]string, 0, len(buildArguments.DockerBuildContextPaths))
 	for k := range buildArguments.DockerBuildContextPaths {
@@ -252,13 +252,13 @@ func getContextFilePath(ctx context.Context, buildArguments *builder.BuildArgume
 		log.Printf("Hash for folder %s is %s. It took %s", item, hash, elapsed)
 	}
 
-	file := filepath.Join(builderTmpFolder, "contexts", strings.Join(hashes, "-")+".tar")
+	file := filepath.Join(contextFolder, strings.Join(hashes, "-")+".tar")
 	return file, nil
 }
 
-func createOrReadDockerContext(ctx context.Context, configuration structs.ConfigurationWithProjectPath, buildArguments *builder.BuildArguments, builderTmpFolder string) (*os.File, error) {
+func createOrReadDockerContext(ctx context.Context, configuration structs.ConfigurationWithProjectPath, buildArguments *builder.BuildArguments, contextFolder string) (*os.File, error) {
 
-	contextPath, err := getContextFilePath(ctx, buildArguments, builderTmpFolder)
+	contextPath, err := getContextFilePath(ctx, buildArguments, contextFolder)
 
 	log.Printf("Context path is %s", contextPath)
 	if err != nil {
@@ -273,9 +273,11 @@ func createOrReadDockerContext(ctx context.Context, configuration structs.Config
 		}
 
 		log.Printf("Creating tar file at path %s", contextPath)
+		start := time.Now()
 		// TODO: Create a tmp file, then rename instead...
 		tarError := tarDirectories(buildArguments.DockerBuildContextPaths, contextPath)
 
+		log.Printf("Created tar file in %s", time.Now().Sub(start))
 		if tarError != nil {
 			return nil, tarError
 		}
@@ -290,15 +292,9 @@ func buildDockerImage(ctx context.Context, configuration structs.ConfigurationWi
 	os.Setenv("DOCKER_BUILDKIT", "1")
 	os.Setenv("BUILDKIT_PROGRESS", "plain")
 	log.Printf("Building project %s", configuration.ServiceName)
+	contextFolder := path.Join(tmpFolder, "contexts")
 
-	buildFolderForProject := path.Join(tmpFolder, configuration.ServiceName)
-	mkdirError := os.MkdirAll(buildFolderForProject, 0755)
-
-	if mkdirError != nil {
-		log.Fatalln(mkdirError)
-	}
-
-	mkcontextdirError := os.MkdirAll(path.Join(buildFolderForProject, "contexts"), 0755)
+	mkcontextdirError := os.MkdirAll(contextFolder, 0755)
 	if mkcontextdirError != nil {
 		log.Fatalln(mkcontextdirError)
 	}
@@ -312,7 +308,7 @@ func buildDockerImage(ctx context.Context, configuration structs.ConfigurationWi
 		return
 	}
 
-	reader, err := createOrReadDockerContext(ctx, configuration, arguments, buildFolderForProject)
+	reader, err := createOrReadDockerContext(ctx, configuration, arguments, contextFolder)
 	defer reader.Close()
 
 	if err != nil {
