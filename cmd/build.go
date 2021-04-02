@@ -195,6 +195,7 @@ func getHexHashForContent(content string) string {
 }
 
 func getHexForFolder(folderPath string) string {
+	// git log -n1 --pretty=format:"%h" --follow "."
 	hasher := md5.New()
 	err := filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -246,6 +247,7 @@ func getContextFilePath(ctx context.Context, buildArguments *builder.BuildArgume
 		log.Printf("Fetching hash for folder %s", item)
 		start := time.Now()
 
+		// git log -n1 --pretty=format:"%h" --follow "."
 		hash := getHexForFolder(item)
 		hashes = append(hashes, hash)
 		elapsed := time.Now().Sub(start)
