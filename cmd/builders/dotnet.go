@@ -75,7 +75,9 @@ func findProjectDependenciesInProjectFile(projectfolder string, projectfile stri
 
 	matches := re.FindAllStringSubmatch(string(projectFileContent), -1)
 
-	dependencies := []string{}
+	dependencies := []string{
+		projectFilePath,
+	}
 
 	for _, dependency := range matches {
 		paths := strings.Split(dependency[1], `\`)
@@ -219,8 +221,8 @@ var DotnetBuilder = &Builder{
 
 		arguments := &BuildArguments{
 			DockerBuildContextPaths: map[string]string{
-				conf.ProjectPath: "",
-				tmpDir:           "",
+				".":    "",
+				tmpDir: "",
 			},
 		}
 
