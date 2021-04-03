@@ -17,7 +17,6 @@ import (
 type DotnetBuilderConfig struct {
 	Type          string `json:"type"`
 	DotnetRuntime string `json:"dotnetruntime"`
-	//dotnetruntime?: 'runtime' | 'aspnet'
 }
 
 func findProjectFileInPath(path string) (fs.FileInfo, error) {
@@ -96,10 +95,10 @@ func findProjectDependenciesInProjectFile(projectfolder string, projectfile stri
 	return unique(dependencies), nil
 }
 
-const DOCKER_SRC = "/src/"
+const DockerSrc = "/src/"
 
 func getDockerCopyCommand(from string, to string) string {
-	return fmt.Sprintf(`COPY %s %s`, from, path.Join(DOCKER_SRC, to))
+	return fmt.Sprintf(`COPY %s %s`, from, path.Join(DockerSrc, to))
 }
 
 func getDockerCopyCommandForDependency(from []string) string {
@@ -171,10 +170,8 @@ var DotnetBuilder = &Builder{
 			return nil, err
 		}
 
-		log.Printf("%q\n", projectDependencies)
-
 		copyProjectDependenciesProjectFiles := getDockerCopyCommandForDependency(projectDependencies)
-		projectDir := path.Join(DOCKER_SRC, conf.ProjectPath)
+		projectDir := path.Join(DockerSrc, conf.ProjectPath)
 		copyProjectDependencies := getDockerCopyCommandForDependency(getDirOfPaths(projectDependencies))
 		projectName := strings.Replace(projectFile.Name(), ".csproj", "", 1)
 		dockerRuntimeImage, err := getDotnetRuntime(builderConfig, projectDependencies)
@@ -203,8 +200,6 @@ var DotnetBuilder = &Builder{
 			COPY --from=build-env %s/out .
 			ENTRYPOINT ["dotnet", "%s.dll"]
 		`, copyProjectDependenciesProjectFiles, projectDir, copyProjectDependencies, dockerRuntimeImage, projectDir, projectName)
-
-		log.Println(dockercontent)
 
 		tmpDir, err := ioutil.TempDir("", "")
 

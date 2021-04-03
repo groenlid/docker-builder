@@ -402,14 +402,14 @@ func handleDockerBuildResponse(resp io.ReadCloser) (string, error) {
 				id = msg.Aux.ID
 			} else if msg.Status != "" {
 				if msg.Progress != "" {
-					log.Printf("  %s :: %s :: %s\n", msg.Status, msg.ID, msg.Progress)
+					//log.Printf("  %s :: %s :: %s\n", msg.Status, msg.ID, msg.Progress)
 				} else {
-					log.Printf("  %s :: %s\n", msg.Status, msg.ID)
+					//log.Printf("  %s :: %s\n", msg.Status, msg.ID)
 				}
 			} else if msg.Stream != "" {
-				log.Printf("  %s", msg.Stream)
+				//log.Printf("  %s", msg.Stream)
 			} else {
-				log.Printf("Unable to handle line: %s", string(line))
+				//log.Printf("Unable to handle line: %s", string(line))
 			}
 		} else {
 			log.Printf("Unable to unmarshal line [%s] ==> %v", string(line), err)
